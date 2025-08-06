@@ -37,7 +37,7 @@ export default function ChatPage() {
 
   const sendMessage = trpc.chat.sendMessage.useMutation({
     onSuccess: (data) => {
-      if (data.imageUrl) {
+      if ("imageUrl" in data) {
         setMessages((prev) => [
           ...prev,
           {
@@ -63,7 +63,17 @@ export default function ChatPage() {
       setIsLoading(false)
       setIsGeneratingImage(false)
     },
-    onError: () => {
+    onError: (error) => {
+      console.error("Error sending message:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          content: "Sorry, I encountered an error. Please try again.",
+          role: "assistant",
+          timestamp: new Date(),
+        },
+      ])
       setIsLoading(false)
       setIsGeneratingImage(false)
     },
@@ -72,8 +82,18 @@ export default function ChatPage() {
   const createChat = trpc.chat.createChat.useMutation({
     onSuccess: (data) => {
       setCurrentChatId(data.id)
-      setMessages([])
-      setChats((prev) => [data, ...prev])
+      setChats((prev) => [
+        {
+          id: data.id,
+          title: data.title,
+          messages: [],
+          createdAt: new Date(data.createdAt),
+        },
+        ...prev,
+      ])
+    },
+    onError: (error) => {
+      console.error("Error creating chat:", error)
     },
   })
 
@@ -84,7 +104,20 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (getChats.data) {
-      setChats(getChats.data)
+      const formattedChats: Chat[] = getChats.data.map((chat) => ({
+        id: chat.id,
+        title: chat.title,
+        createdAt: new Date(chat.createdAt),
+        messages: chat.messages.map((msg) => ({
+          id: msg.id,
+          content: msg.content,
+          role: msg.role,
+          timestamp: new Date(msg.timestamp),
+          imageUrl: msg.imageUrl,
+          isImage: msg.isImage,
+        })),
+      }))
+      setChats(formattedChats)
     }
   }, [getChats.data])
 
@@ -113,32 +146,42 @@ export default function ChatPage() {
     }
 
     setMessages((prev) => [...prev, userMessage])
-    
     const messageContent = input.trim()
     const isImageGen = isImageRequest(messageContent)
-    
-    if (isImageGen) {
-      setIsGeneratingImage(true)
-    } else {
-      setIsLoading(true)
-    }
+
+    if (isImageGen) setIsGeneratingImage(true)
+    else setIsLoading(true)
 
     setInput("")
 
-    if (!currentChatId) {
-      await createChat.mutateAsync({
-        title: messageContent.slice(0, 50) + (messageContent.length > 50 ? "..." : ""),
-        userId: user?.sub || "",
-      })
+    let chatId = currentChatId
+    if (!chatId) {
+      try {
+        const newChat = await createChat.mutateAsync({
+          title: messageContent.slice(0, 50) + (messageContent.length > 50 ? "..." : ""),
+          userId: user?.sub || "",
+        })
+        chatId = newChat.id
+      } catch (error) {
+        console.error("Error creating chat:", error)
+        setIsLoading(false)
+        setIsGeneratingImage(false)
+        return
+      }
     }
 
-    sendMessage.mutate({
-      message: messageContent,
-      chatId: currentChatId || "",
-      history: messages,
-      userId: user?.sub || "",
-      isImageRequest: isImageGen,
-    })
+   sendMessage.mutate({
+  message: messageContent,
+  chatId: chatId || "",
+  userId: user?.sub || "",
+  isImageRequest: isImageGen,
+  history: messages.map((msg) => ({
+    ...msg,
+    timestamp: new Date(msg.timestamp), // Ensure timestamp is a Date
+  })),
+})
+
+
   }
 
   const startNewChat = () => {
@@ -169,12 +212,9 @@ export default function ChatPage() {
 
   return (
     <div className="chat-container">
-      {/* Sidebar Overlay */}
       <div className={`sidebar-overlay ${sidebarOpen ? "show" : ""}`} onClick={() => setSidebarOpen(false)} />
 
-      {/* Sidebar */}
       <div className={`sidebar ${sidebarOpen ? "show" : ""}`}>
-        {/* User Profile */}
         <div className="user-profile">
           <div className="user-avatar">
             {user.picture ? (
@@ -192,7 +232,6 @@ export default function ChatPage() {
           </a>
         </div>
 
-        {/* Sidebar Header */}
         <div className="sidebar-header">
           <button className="btn new-chat-btn w-100 mb-3" onClick={startNewChat}>
             <i className="bi bi-plus-lg me-2"></i>
@@ -204,7 +243,6 @@ export default function ChatPage() {
           </button>
         </div>
 
-        {/* Chat History */}
         <div className="flex-grow-1">
           <div className="p-3">
             <h6 className="text-muted mb-3">Recent Chats</h6>
@@ -222,7 +260,6 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Header */}
       <div className="chat-header d-flex align-items-center justify-content-between p-3">
         <button className="btn btn-outline-secondary" onClick={() => setSidebarOpen(true)}>
           <i className="bi bi-list"></i>
@@ -233,7 +270,6 @@ export default function ChatPage() {
         </button>
       </div>
 
-      {/* Messages */}
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="welcome-section">
@@ -241,20 +277,14 @@ export default function ChatPage() {
             <p className="welcome-subtitle">
               I can help you with text responses and generate images. Just ask!
             </p>
-            
             <div className="feature-cards">
               <div className="feature-card">
-                <div className="feature-icon">
-                  <i className="bi bi-chat-dots"></i>
-                </div>
+                <div className="feature-icon"><i className="bi bi-chat-dots"></i></div>
                 <h6>Text Conversations</h6>
                 <p className="mb-0 small text-muted">Ask me anything and I'll provide detailed responses</p>
               </div>
-              
               <div className="feature-card">
-                <div className="feature-icon">
-                  <i className="bi bi-image"></i>
-                </div>
+                <div className="feature-icon"><i className="bi bi-image"></i></div>
                 <h6>Image Generation</h6>
                 <p className="mb-0 small text-muted">Request images and I'll create them for you</p>
               </div>
@@ -263,10 +293,7 @@ export default function ChatPage() {
         )}
 
         {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`message-bubble ${message.role === "user" ? "user-message" : "assistant-message"}`}
-          >
+          <div key={message.id} className={`message-bubble ${message.role === "user" ? "user-message" : "assistant-message"}`}>
             {message.content}
             {message.imageUrl && (
               <img 
@@ -301,7 +328,6 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <div className="chat-input-container">
         <form onSubmit={handleSubmit} className="chat-input-form">
           <input

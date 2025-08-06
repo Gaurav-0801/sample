@@ -13,7 +13,6 @@ export interface Chat {
   messages: Message[]
   createdAt: Date
 }
-
 export interface SendMessageResponse {
   response: string
   imageUrl?: string

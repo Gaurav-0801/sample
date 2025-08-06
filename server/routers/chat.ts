@@ -51,7 +51,7 @@ export const chatRouter = router({
             id: z.string(),
             content: z.string(),
             role: z.enum(["user", "assistant"]),
-            timestamp: z.date(),
+            timestamp: z.coerce.date(),
             imageUrl: z.string().optional(),
             isImage: z.boolean().optional(),
           }),
@@ -183,17 +183,18 @@ export const chatRouter = router({
       if (error) throw error
 
       return chats.map((chat) => ({
-        id: chat.id,
-        title: chat.title,
-        createdAt: new Date(chat.created_at),
-        messages: chat.messages.map((msg: any) => ({
-          id: msg.id,
-          content: msg.content,
-          role: msg.role,
-          timestamp: new Date(msg.created_at),
-          imageUrl: msg.image_url,
-          isImage: msg.is_image,
-        })),
-      }))
+  id: chat.id,
+  title: chat.title,
+  createdAt: new Date(chat.created_at),
+  messages: chat.messages.map((msg: any) => ({
+    id: msg.id,
+    content: msg.content,
+    role: msg.role,
+    timestamp: new Date(msg.created_at),
+    imageUrl: msg.image_url,
+    isImage: msg.is_image,
+  })),
+}))
+
     }),
 })
